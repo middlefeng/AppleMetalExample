@@ -182,13 +182,14 @@ inline void sampleAreaLight(constant AreaLight & light,
 
 // Aligns a direction on the unit hemisphere such that the hemisphere's "up" direction
 // (0, 1, 0) maps to the given surface normal direction
-inline float3 alignHemisphereWithNormal(float3 sample, float3 normal) {
+inline float3 alignHemisphereWithNormal(float3 sample, float3 normal, float2 random)
+{
     // Set the "up" vector to the normal
     float3 up = normal;
     
     // Find an arbitrary direction perpendicular to the normal. This will become the
     // "right" vector.
-    float3 right = normalize(cross(normal, float3(0.0072f, 1.0f, 0.0034f)));
+    float3 right = normalize(cross(normal, float3(random.y, 1.0f, random.x)));
     
     // Find a third vector perpendicular to the previous two. This will be the
     // "forward" vector.
@@ -208,8 +209,9 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                         device float3 *vertexColors,
                         device float3 *vertexNormals,
                         device float2 *random,
+                        device float2 *random2,
                         device uint *triangleMasks,
-                        texture2d<float, access::write> dstTex)
+                        texture2d<float, access::read_write> dstTex)
 {
     if (tid.x < uniforms.width && tid.y < uniforms.height) {
         unsigned int rayIdx = tid.y * uniforms.width + tid.x;
@@ -218,6 +220,12 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         device Intersection & intersection = intersections[rayIdx];
         
         float3 color = ray.color;
+        
+        if (ray.mask == RAY_MASK_SECONDARY)
+        {
+            //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
+            //return;
+        }
         
         // Intersection distance will be negative if ray missed or was disabled in a previous
         // iteration.
@@ -236,7 +244,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 surfaceNormal = normalize(surfaceNormal);
 
                 // Look up two uniformly random numbers for this thread
-                float2 r = random[(tid.y % 16) * 16 + (tid.x % 16)];
+                float2 r = random[(tid.x % 16) * 16 + (tid.y % 16)];
 
                 float3 lightDirection;
                 float3 lightColor;
@@ -249,7 +257,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Scale the light color by the cosine of the angle between the light direction and
                 // surface normal
-                lightColor *= saturate(dot(surfaceNormal, lightDirection));
+                //lightColor *= saturate(dot(surfaceNormal, lightDirection));
 
                 // Interpolate the vertex color at the intersection point
                 color *= interpolateVertexAttribute(vertexColors, intersection);
@@ -261,7 +269,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Add a small offset to the intersection point to avoid intersecting the same
                 // triangle again.
-                shadowRay.origin = intersectionPoint + surfaceNormal * 1e-3f;
+                /*shadowRay.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 
                 // Travel towards the light source
                 shadowRay.direction = lightDirection;
@@ -275,7 +283,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // Multiply the color and lighting amount at the intersection point to get the final
                 // color, and pass it along with the shadow ray so that it can be added to the
                 // output image if needed.
-                shadowRay.color = lightColor * color;
+                shadowRay.color = lightColor * color;*/
                 
                 // Next we choose a random direction to continue the path of the ray. This will
                 // cause light to bounce between surfaces. Normally we would apply a fair bit of math
@@ -286,7 +294,16 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // multiplying by the interpolated vertex color. This sampling strategy also reduces
                 // the amount of noise in the output image.
                 float3 sampleDirection = sampleCosineWeightedHemisphere(r);
-                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal);
+                float2 r1 = random2[(tid.x % 16) * 16 + (tid.y % 16)];
+                r1 = (r1 * 2.0) - 1.0;
+                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal, r1);
+                
+                if (ray.mask == RAY_MASK_SECONDARY)
+                {
+                    //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
+                }
+                
+                //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
 
                 ray.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 ray.direction = sampleDirection;
@@ -296,7 +313,14 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
             else {
                 // In this case, a ray coming from the camera hit the light source directly, so
                 // we'll write the light color into the output image.
-                dstTex.write(float4(uniforms.light.color, 1.0f), tid);
+                float3 color = uniforms.light.color * 3.0 * ray.color;
+                //color += dstTex.read(tid).xyz;
+                dstTex.write(float4(color, 1.0f), tid);
+                //dstTex.write(float4(ray.direction, 1.0f), tid);
+                
+                float3 surfaceNormal = interpolateVertexAttribute(vertexNormals, intersection);
+                surfaceNormal = normalize(surfaceNormal);
+                //dstTex.write(float4(surfaceNormal.xyz, 1.0f), tid);
                 
                 // Terminate the ray's path
                 ray.maxDistance = -1.0f;
@@ -337,7 +361,7 @@ kernel void shadowKernel(uint2 tid [[thread_position_in_grid]],
             color += dstTex.read(tid).xyz;
             
             // Write result to render target
-            dstTex.write(float4(color, 1.0f), tid);
+            // dstTex.write(float4(color, 1.0f), tid);
         }
     }
 }
