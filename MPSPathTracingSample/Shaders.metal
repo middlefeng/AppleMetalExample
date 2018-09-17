@@ -315,7 +315,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // we'll write the light color into the output image.
                 float3 color = uniforms.light.color * 3.0 * ray.color;
                 //color += dstTex.read(tid).xyz;
-                dstTex.write(float4(color, 1.0f), tid);
+                dstTex.write(float4(color * 2 * M_PI_F, 1.0f), tid);
                 //dstTex.write(float4(ray.direction, 1.0f), tid);
                 
                 float3 surfaceNormal = interpolateVertexAttribute(vertexNormals, intersection);
