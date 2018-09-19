@@ -31,7 +31,9 @@ struct Ray {
     float maxDistance;
     
     // The accumulated color along the ray's path so far
-    float3 color;
+    packed_float3 color;
+    
+    uint depth;
 };
 
 // Represents an intersection between a ray and the scene, returned by the MPSRayIntersector.
@@ -99,6 +101,8 @@ kernel void rayKernel(uint2 tid                    [[thread_position_in_grid]],
         // Start with a fully white color. Each bounce will scale the color as light
         // is absorbed into surfaces.
         ray.color = float3(1.0f, 1.0f, 1.0f);
+        
+        ray.depth = 0;
         
         // Clear the destination image to black
         dstTex.write(float4(0.0f, 0.0f, 0.0f, 0.0f), tid);
@@ -182,14 +186,14 @@ inline void sampleAreaLight(constant AreaLight & light,
 
 // Aligns a direction on the unit hemisphere such that the hemisphere's "up" direction
 // (0, 1, 0) maps to the given surface normal direction
-inline float3 alignHemisphereWithNormal(float3 sample, float3 normal, float2 random)
+inline float3 alignHemisphereWithNormal(float3 sample, float3 normal)
 {
     // Set the "up" vector to the normal
     float3 up = normal;
     
     // Find an arbitrary direction perpendicular to the normal. This will become the
     // "right" vector.
-    float3 right = normalize(cross(normal, float3(random.y, 1.0f, random.x)));
+    float3 right = normalize(cross(normal, float3(0.0072f, 1.0f, 0.0034f)));
     
     // Find a third vector perpendicular to the previous two. This will be the
     // "forward" vector.
@@ -244,7 +248,11 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 surfaceNormal = normalize(surfaceNormal);
 
                 // Look up two uniformly random numbers for this thread
-                float2 r = random[(tid.x % 16) * 16 + (tid.y % 16)];
+                float2 r = 0;
+                if (ray.depth > 0)
+                    r = random2[(tid.x % 16) * 16 + (tid.y % 16)];
+                else
+                    r = random[(tid.x % 16) * 16 + (tid.y % 16)];
 
                 float3 lightDirection;
                 float3 lightColor;
@@ -294,21 +302,13 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // multiplying by the interpolated vertex color. This sampling strategy also reduces
                 // the amount of noise in the output image.
                 float3 sampleDirection = sampleCosineWeightedHemisphere(r);
-                float2 r1 = random2[(tid.x % 16) * 16 + (tid.y % 16)];
-                r1 = (r1 * 2.0) - 1.0;
-                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal, r1);
-                
-                if (ray.mask == RAY_MASK_SECONDARY)
-                {
-                    //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
-                }
-                
-                //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
+                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal);
 
                 ray.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 ray.direction = sampleDirection;
                 ray.color = color;
                 ray.mask = RAY_MASK_SECONDARY;
+                ray.depth = ray.depth + 1;
             }
             else {
                 // In this case, a ray coming from the camera hit the light source directly, so

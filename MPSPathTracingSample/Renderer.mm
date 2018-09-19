@@ -465,7 +465,7 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         // as soon as any intersection is found. This is typically much faster than finding the nearest
         // intersection. We can also use MPSIntersectionDataTypeDistance, because we don't need the triangle
         // index and barycentric coordinates.
-        _intersector.intersectionDataType = MPSIntersectionDataTypeDistance;
+        /*_intersector.intersectionDataType = MPSIntersectionDataTypeDistance;
         
         [_intersector encodeIntersectionToCommandBuffer:commandBuffer
                                        intersectionType:MPSIntersectionTypeAny
@@ -474,7 +474,7 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
                                      intersectionBuffer:_intersectionBuffer
                                intersectionBufferOffset:0
                                                rayCount:width * height
-                                  accelerationStructure:_accelerationStructure];
+                                  accelerationStructure:_accelerationStructure];*/
         
         // Finally, we launch a kernel which writes the color computed by the shading kernel into the
         // output image, but only if the corresponding shadow ray does not intersect anything on the way to
