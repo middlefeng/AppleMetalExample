@@ -33,7 +33,7 @@ struct Ray {
     // The accumulated color along the ray's path so far
     packed_float3 color;
     
-    uint depth;
+    int bounce;
 };
 
 // Represents an intersection between a ray and the scene, returned by the MPSRayIntersector.
@@ -102,7 +102,7 @@ kernel void rayKernel(uint2 tid                    [[thread_position_in_grid]],
         // is absorbed into surfaces.
         ray.color = float3(1.0f, 1.0f, 1.0f);
         
-        ray.depth = 0;
+        ray.bounce = 0;
         
         // Clear the destination image to black
         dstTex.write(float4(0.0f, 0.0f, 0.0f, 0.0f), tid);
@@ -194,6 +194,8 @@ inline float3 alignHemisphereWithNormal(float3 sample, float3 normal)
     // Find an arbitrary direction perpendicular to the normal. This will become the
     // "right" vector.
     float3 right = normalize(cross(normal, float3(0.0072f, 1.0f, 0.0034f)));
+    if (length(right)  < 1e-3)
+        right = simd::normalize(metal::cross(normal, float3 { 0.0072f, 0.0034f, 1.0f }));
     
     // Find a third vector perpendicular to the previous two. This will be the
     // "forward" vector.
@@ -213,9 +215,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                         device float3 *vertexColors,
                         device float3 *vertexNormals,
                         device float2 *random,
-                        device float2 *random2,
                         device uint *triangleMasks,
-                        texture2d<float, access::read_write> dstTex)
+                        texture2d<float, access::write> dstTex)
 {
     if (tid.x < uniforms.width && tid.y < uniforms.height) {
         unsigned int rayIdx = tid.y * uniforms.width + tid.x;
@@ -224,12 +225,6 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         device Intersection & intersection = intersections[rayIdx];
         
         float3 color = ray.color;
-        
-        if (ray.mask == RAY_MASK_SECONDARY)
-        {
-            //dstTex.write(float4(ray.direction.xyz, 1.0f), tid);
-            //return;
-        }
         
         // Intersection distance will be negative if ray missed or was disabled in a previous
         // iteration.
@@ -248,12 +243,9 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 surfaceNormal = normalize(surfaceNormal);
 
                 // Look up two uniformly random numbers for this thread
-                float2 r = 0;
-                if (ray.depth > 0)
-                    r = random2[(tid.x % 16) * 16 + (tid.y % 16)];
-                else
-                    r = random[(tid.x % 16) * 16 + (tid.y % 16)];
+                float2 r = random[(tid.x % 16) * 16 + (tid.y % 16) + 256 * ray.bounce];
 
+#if D_EMIT_SHADOW_RAY
                 float3 lightDirection;
                 float3 lightColor;
                 float lightDistance;
@@ -265,7 +257,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Scale the light color by the cosine of the angle between the light direction and
                 // surface normal
-                //lightColor *= saturate(dot(surfaceNormal, lightDirection));
+                lightColor *= saturate(dot(surfaceNormal, lightDirection));
+#endif
 
                 // Interpolate the vertex color at the intersection point
                 color *= interpolateVertexAttribute(vertexColors, intersection);
@@ -277,7 +270,9 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Add a small offset to the intersection point to avoid intersecting the same
                 // triangle again.
-                /*shadowRay.origin = intersectionPoint + surfaceNormal * 1e-3f;
+                
+#if D_EMIT_SHADOW_RAY
+                shadowRay.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 
                 // Travel towards the light source
                 shadowRay.direction = lightDirection;
@@ -291,7 +286,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // Multiply the color and lighting amount at the intersection point to get the final
                 // color, and pass it along with the shadow ray so that it can be added to the
                 // output image if needed.
-                shadowRay.color = lightColor * color;*/
+                shadowRay.color = lightColor * color;
+#endif
                 
                 // Next we choose a random direction to continue the path of the ray. This will
                 // cause light to bounce between surfaces. Normally we would apply a fair bit of math
@@ -307,20 +303,21 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 ray.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 ray.direction = sampleDirection;
                 ray.color = color;
+                ray.bounce = ray.bounce + 1;
+                
+#if D_EMIT_SHADOW_RAY
                 ray.mask = RAY_MASK_SECONDARY;
-                ray.depth = ray.depth + 1;
+#endif
             }
             else {
                 // In this case, a ray coming from the camera hit the light source directly, so
                 // we'll write the light color into the output image.
-                float3 color = uniforms.light.color * 3.0 * ray.color;
-                //color += dstTex.read(tid).xyz;
-                dstTex.write(float4(color * 2 * M_PI_F, 1.0f), tid);
-                //dstTex.write(float4(ray.direction, 1.0f), tid);
+                float3 color = uniforms.light.color;
                 
-                float3 surfaceNormal = interpolateVertexAttribute(vertexNormals, intersection);
-                surfaceNormal = normalize(surfaceNormal);
-                //dstTex.write(float4(surfaceNormal.xyz, 1.0f), tid);
+#if !D_EMIT_SHADOW_RAY
+                color *= ray.color;
+#endif
+                dstTex.write(float4(color, 1.0f), tid);
                 
                 // Terminate the ray's path
                 ray.maxDistance = -1.0f;
@@ -361,7 +358,7 @@ kernel void shadowKernel(uint2 tid [[thread_position_in_grid]],
             color += dstTex.read(tid).xyz;
             
             // Write result to render target
-            // dstTex.write(float4(color, 1.0f), tid);
+            dstTex.write(float4(color, 1.0f), tid);
         }
     }
 }

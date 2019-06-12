@@ -18,6 +18,7 @@ using namespace simd;
 static const NSUInteger maxFramesInFlight = 3;
 static const size_t alignedUniformsSize = (sizeof(Uniforms) + 255) & ~255;
 
+static const size_t rayBounce = 3;
 static const size_t rayStride = 48;
 static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitiveIndexCoordinates);
 
@@ -39,7 +40,6 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     id <MTLBuffer> _intersectionBuffer;
     id <MTLBuffer> _uniformBuffer;
     id <MTLBuffer> _randomBuffer;
-    id <MTLBuffer> _randomBuffer2;
     id <MTLBuffer> _triangleMaskBuffer;
     
     id <MTLComputePipelineState> _rayPipeline;
@@ -224,8 +224,8 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     
     _uniformBuffer = [_device newBufferWithLength:uniformBufferSize options:options];
 
-    _randomBuffer = [_device newBufferWithLength:256 * sizeof(float2) * maxFramesInFlight options:options];
-    _randomBuffer2 = [_device newBufferWithLength:256 * sizeof(float2) * maxFramesInFlight options:options];
+    _randomBuffer = [_device newBufferWithLength:256 * sizeof(float2) * maxFramesInFlight * rayBounce
+                                         options:options];
     
     // Allocate buffers for vertex positions, colors, and normals. Note that each vertex position is a
     // float3, which is a 16 byte aligned type.
@@ -233,8 +233,6 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     _vertexColorBuffer = [_device newBufferWithLength:colors.size() * sizeof(float3) options:options];
     _vertexNormalBuffer = [_device newBufferWithLength:normals.size() * sizeof(float3) options:options];
     _triangleMaskBuffer = [_device newBufferWithLength:masks.size() * sizeof(uint32_t) options:options];
-    
-    printf("Buffer Size: %ld, %ld.\n", vertices.size(), masks.size());
     
     // Copy vertex data into buffers
     memcpy(_vertexPositionBuffer.contents, &vertices[0], _vertexPositionBuffer.length);
@@ -259,13 +257,13 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     
     _intersector.rayDataType = MPSRayDataTypeOriginMaskDirectionMaxDistance;
     _intersector.rayStride = rayStride;
-    //_intersector.rayMaskOptions = MPSRayMaskOptionPrimitive;
+    _intersector.rayMaskOptions = MPSRayMaskOptionPrimitive;
     
     // Create an acceleration structure from our vertex position data
     _accelerationStructure = [[MPSTriangleAccelerationStructure alloc] initWithDevice:_device];
     
     _accelerationStructure.vertexBuffer = _vertexPositionBuffer;
-    //_accelerationStructure.maskBuffer = _triangleMaskBuffer;
+    _accelerationStructure.maskBuffer = _triangleMaskBuffer;
     _accelerationStructure.triangleCount = vertices.size() / 3;
     
     [_accelerationStructure rebuild];
@@ -342,27 +340,18 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
 #endif
 
     // Generate random values for this frame
-    _randomBufferOffset = 256 * sizeof(float2) * _uniformBufferIndex;
+    _randomBufferOffset = 256 * sizeof(float2) * rayBounce * _uniformBufferIndex;
 
     float2 *random = (float2 *)((char *)_randomBuffer.contents + _randomBufferOffset);
 
-    for (int i = 0; i < 256; i++)
+    for (int i = 0; i < 256 * rayBounce; i++)
         random[i] = {
             (float)rand() / (float)RAND_MAX,
             (float)rand() / (float)RAND_MAX
         };
     
-    float2* random1 = (float2 *)((char *)_randomBuffer2.contents + _randomBufferOffset);
-    
-    for (int i = 0; i < 256; i++)
-        random1[i] = {
-            (float)rand() / (float)RAND_MAX,
-            (float)rand() / (float)RAND_MAX
-        };
-
 #if !TARGET_OS_IPHONE
-    [_randomBuffer didModifyRange:NSMakeRange(_randomBufferOffset, 256 * sizeof(float2))];
-    [_randomBuffer2 didModifyRange:NSMakeRange(_randomBufferOffset, 256 * sizeof(float2))];
+    [_randomBuffer didModifyRange:NSMakeRange(_randomBufferOffset, 256 * sizeof(float2) * rayBounce)];
 #endif
     
     // Advance to the next slot in the uniform buffer
@@ -422,11 +411,7 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     [computeEncoder endEncoding];
     
     // We will iterate over the next few kernels several times to allow light to bounce around the scene
-    int boundCount = 2;
-    if (_uniformBufferIndex == 0)
-        boundCount = 3;
-    
-    for (int bounce = 0; bounce < 3; bounce++) {
+    for (int bounce = 0; bounce < rayBounce; bounce++) {
         _intersector.intersectionDataType = MPSIntersectionDataTypeDistancePrimitiveIndexCoordinates;
 
         // We can then pass the rays to the MPSRayIntersector to compute the intersections with our acceleration structure
@@ -448,8 +433,7 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         [computeEncoder setBuffer:_vertexColorBuffer  offset:0                    atIndex:4];
         [computeEncoder setBuffer:_vertexNormalBuffer offset:0                    atIndex:5];
         [computeEncoder setBuffer:_randomBuffer       offset:_randomBufferOffset  atIndex:6];
-        [computeEncoder setBuffer:_randomBuffer2      offset:_randomBufferOffset  atIndex:7];
-        [computeEncoder setBuffer:_triangleMaskBuffer offset:0                    atIndex:8];
+        [computeEncoder setBuffer:_triangleMaskBuffer offset:0                    atIndex:7];
         
         [computeEncoder setTexture:_renderTarget atIndex:0];
         
@@ -465,7 +449,9 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         // as soon as any intersection is found. This is typically much faster than finding the nearest
         // intersection. We can also use MPSIntersectionDataTypeDistance, because we don't need the triangle
         // index and barycentric coordinates.
-        /*_intersector.intersectionDataType = MPSIntersectionDataTypeDistance;
+        
+#if D_EMIT_SHADOW_RAY
+        _intersector.intersectionDataType = MPSIntersectionDataTypeDistance;
         
         [_intersector encodeIntersectionToCommandBuffer:commandBuffer
                                        intersectionType:MPSIntersectionTypeAny
@@ -474,13 +460,14 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
                                      intersectionBuffer:_intersectionBuffer
                                intersectionBufferOffset:0
                                                rayCount:width * height
-                                  accelerationStructure:_accelerationStructure];*/
+                                  accelerationStructure:_accelerationStructure];
         
         // Finally, we launch a kernel which writes the color computed by the shading kernel into the
         // output image, but only if the corresponding shadow ray does not intersect anything on the way to
         // the light. If the shadow ray intersects a triangle before reaching the light source, the original
         // intersection point was in shadow.
-        /*computeEncoder = [commandBuffer computeCommandEncoder];
+        
+        computeEncoder = [commandBuffer computeCommandEncoder];
         
         [computeEncoder setBuffer:_uniformBuffer      offset:_uniformBufferOffset atIndex:0];
         [computeEncoder setBuffer:_shadowRayBuffer    offset:0                    atIndex:1];
@@ -492,7 +479,8 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         
         [computeEncoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
         
-        [computeEncoder endEncoding];*/
+        [computeEncoder endEncoding];
+#endif
     }
 
     // The final kernel averages the current frame's image with all previous frames to reduce noise due
