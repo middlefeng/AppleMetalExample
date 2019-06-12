@@ -482,12 +482,18 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = "";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"D_EMIT_SHADOW_RAY=1",
+					"$(inherited)",
+				);
 				INFOPLIST_FILE = MPSPathTracingSample/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MTL_PREPROCESSOR_DEFINITIONS = "D_EMIT_SHADOW_RAY=1";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.apple-samplecode.SimpleRenderingSample${SAMPLE_CODE_DISAMBIGUATOR}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -510,6 +516,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MTL_PREPROCESSOR_DEFINITIONS = "D_EMIT_SHADOW_RAY=1";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.apple-samplecode.SimpleRenderingSample${SAMPLE_CODE_DISAMBIGUATOR}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

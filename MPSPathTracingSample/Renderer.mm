@@ -257,13 +257,13 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     
     _intersector.rayDataType = MPSRayDataTypeOriginMaskDirectionMaxDistance;
     _intersector.rayStride = rayStride;
-    //_intersector.rayMaskOptions = MPSRayMaskOptionPrimitive;
+    _intersector.rayMaskOptions = MPSRayMaskOptionPrimitive;
     
     // Create an acceleration structure from our vertex position data
     _accelerationStructure = [[MPSTriangleAccelerationStructure alloc] initWithDevice:_device];
     
     _accelerationStructure.vertexBuffer = _vertexPositionBuffer;
-    //_accelerationStructure.maskBuffer = _triangleMaskBuffer;
+    _accelerationStructure.maskBuffer = _triangleMaskBuffer;
     _accelerationStructure.triangleCount = vertices.size() / 3;
     
     [_accelerationStructure rebuild];
@@ -464,7 +464,9 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         // output image, but only if the corresponding shadow ray does not intersect anything on the way to
         // the light. If the shadow ray intersects a triangle before reaching the light source, the original
         // intersection point was in shadow.
-        /*computeEncoder = [commandBuffer computeCommandEncoder];
+        
+#if D_EMIT_SHADOW_RAY
+        computeEncoder = [commandBuffer computeCommandEncoder];
         
         [computeEncoder setBuffer:_uniformBuffer      offset:_uniformBufferOffset atIndex:0];
         [computeEncoder setBuffer:_shadowRayBuffer    offset:0                    atIndex:1];
@@ -476,7 +478,8 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         
         [computeEncoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
         
-        [computeEncoder endEncoding];*/
+        [computeEncoder endEncoding];
+#endif
     }
 
     // The final kernel averages the current frame's image with all previous frames to reduce noise due
