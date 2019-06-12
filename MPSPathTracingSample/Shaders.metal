@@ -31,7 +31,10 @@ struct Ray {
     float maxDistance;
     
     // The accumulated color along the ray's path so far
-    float3 color;
+    packed_float3 color;
+    
+    
+    int bounce;
 };
 
 // Represents an intersection between a ray and the scene, returned by the MPSRayIntersector.
@@ -99,6 +102,8 @@ kernel void rayKernel(uint2 tid                    [[thread_position_in_grid]],
         // Start with a fully white color. Each bounce will scale the color as light
         // is absorbed into surfaces.
         ray.color = float3(1.0f, 1.0f, 1.0f);
+        
+        ray.bounce = 0;
         
         // Clear the destination image to black
         dstTex.write(float4(0.0f, 0.0f, 0.0f, 0.0f), tid);
@@ -182,14 +187,16 @@ inline void sampleAreaLight(constant AreaLight & light,
 
 // Aligns a direction on the unit hemisphere such that the hemisphere's "up" direction
 // (0, 1, 0) maps to the given surface normal direction
-inline float3 alignHemisphereWithNormal(float3 sample, float3 normal, float2 random)
+inline float3 alignHemisphereWithNormal(float3 sample, float3 normal)
 {
     // Set the "up" vector to the normal
     float3 up = normal;
     
     // Find an arbitrary direction perpendicular to the normal. This will become the
     // "right" vector.
-    float3 right = normalize(cross(normal, float3(random.y, 1.0f, random.x)));
+    float3 right = normalize(cross(normal, float3(0.0072f, 1.0f, 0.0034f)));
+    if (length(right)  < 1e-3)
+        right = simd::normalize(metal::cross(normal, float3 { 0.0072f, 0.0034f, 1.0f }));
     
     // Find a third vector perpendicular to the previous two. This will be the
     // "forward" vector.
@@ -209,7 +216,6 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                         device float3 *vertexColors,
                         device float3 *vertexNormals,
                         device float2 *random,
-                        device float2 *random2,
                         device uint *triangleMasks,
                         texture2d<float, access::read_write> dstTex)
 {
@@ -244,7 +250,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 surfaceNormal = normalize(surfaceNormal);
 
                 // Look up two uniformly random numbers for this thread
-                float2 r = random[(tid.x % 16) * 16 + (tid.y % 16)];
+                float2 r = random[(tid.x % 16) * 16 + (tid.y % 16) + 256 * ray.bounce];
 
                 float3 lightDirection;
                 float3 lightColor;
@@ -252,8 +258,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Compute the direction to, color, and distance to a random point on the light
                 // source
-                sampleAreaLight(uniforms.light, r, intersectionPoint, lightDirection,
-                                lightColor, lightDistance);
+                //sampleAreaLight(uniforms.light, r, intersectionPoint, lightDirection,
+                //                lightColor, lightDistance);
                 
                 // Scale the light color by the cosine of the angle between the light direction and
                 // surface normal
@@ -294,9 +300,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // multiplying by the interpolated vertex color. This sampling strategy also reduces
                 // the amount of noise in the output image.
                 float3 sampleDirection = sampleCosineWeightedHemisphere(r);
-                float2 r1 = random2[(tid.x % 16) * 16 + (tid.y % 16)];
-                r1 = (r1 * 2.0) - 1.0;
-                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal, r1);
+                sampleDirection = alignHemisphereWithNormal(sampleDirection, surfaceNormal);
                 
                 if (ray.mask == RAY_MASK_SECONDARY)
                 {
@@ -308,6 +312,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 ray.origin = intersectionPoint + surfaceNormal * 1e-3f;
                 ray.direction = sampleDirection;
                 ray.color = color;
+                ray.bounce = ray.bounce + 1;
                 ray.mask = RAY_MASK_SECONDARY;
             }
             else {

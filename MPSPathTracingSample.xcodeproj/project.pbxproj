@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2C93B2F022B0C8E3008A7684 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 51564714205B0E0B006AF627 /* Metal.framework */; };
+		2C93B2F222B0C8E4008A7684 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C93B2F122B0C8E3008A7684 /* MetalKit.framework */; };
+		2C93B2F322B0C8FC008A7684 /* MetalPerformanceShaders.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 51564716205B0E11006AF627 /* MetalPerformanceShaders.framework */; };
 		3E9448D620BC6BF0001DD43A /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E9448D520BC6BF0001DD43A /* README.md */; };
 		51C2956220A81D5500F951BE /* Scene.mm in Sources */ = {isa = PBXBuildFile; fileRef = 51C2956120A81D5500F951BE /* Scene.mm */; };
 		51C2956320A81D5500F951BE /* Scene.mm in Sources */ = {isa = PBXBuildFile; fileRef = 51C2956120A81D5500F951BE /* Scene.mm */; };
@@ -25,18 +28,15 @@
 		51F70018209BCA110017E288 /* GameViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 51F7FFFC209BC3E90017E288 /* GameViewController.m */; };
 		51F70019209BCA110017E288 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 51F70001209BC3E90017E288 /* main.m */; };
 		51F7001A209BCA180017E288 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 51F70006209BC3F00017E288 /* Main.storyboard */; };
-		51F7FFBA209BC1C40017E288 /* MetalPerformanceShaders.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 51E97FA52017014200D09D13 /* MetalPerformanceShaders.framework */; };
-		51F7FFCD209BC1C60017E288 /* MetalPerformanceShaders.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 51E97FA72017014A00D09D13 /* MetalPerformanceShaders.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		2C93B2F122B0C8E3008A7684 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		3E9448D520BC6BF0001DD43A /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		51564714205B0E0B006AF627 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		51564716205B0E11006AF627 /* MetalPerformanceShaders.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalPerformanceShaders.framework; path = System/Library/Frameworks/MetalPerformanceShaders.framework; sourceTree = SDKROOT; };
 		51C2956020A81D3300F951BE /* Scene.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Scene.h; sourceTree = "<group>"; };
 		51C2956120A81D5500F951BE /* Scene.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Scene.mm; sourceTree = "<group>"; };
-		51E97FA52017014200D09D13 /* MetalPerformanceShaders.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalPerformanceShaders.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.3.Internal.sdk/System/Library/Frameworks/MetalPerformanceShaders.framework; sourceTree = DEVELOPER_DIR; };
-		51E97FA72017014A00D09D13 /* MetalPerformanceShaders.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalPerformanceShaders.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.13.Internal.sdk/System/Library/Frameworks/MetalPerformanceShaders.framework; sourceTree = DEVELOPER_DIR; };
 		51F70000209BC3E90017E288 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		51F70001209BC3E90017E288 /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		51F70007209BC3F00017E288 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -69,7 +69,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				51F7FFBA209BC1C40017E288 /* MetalPerformanceShaders.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,7 +76,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				51F7FFCD209BC1C60017E288 /* MetalPerformanceShaders.framework in Frameworks */,
+				2C93B2F322B0C8FC008A7684 /* MetalPerformanceShaders.framework in Frameworks */,
+				2C93B2F222B0C8E4008A7684 /* MetalKit.framework in Frameworks */,
+				2C93B2F022B0C8E3008A7684 /* Metal.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,10 +126,9 @@
 		51E97FA42017014100D09D13 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				2C93B2F122B0C8E3008A7684 /* MetalKit.framework */,
 				51564716205B0E11006AF627 /* MetalPerformanceShaders.framework */,
 				51564714205B0E0B006AF627 /* Metal.framework */,
-				51E97FA72017014A00D09D13 /* MetalPerformanceShaders.framework */,
-				51E97FA52017014200D09D13 /* MetalPerformanceShaders.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
