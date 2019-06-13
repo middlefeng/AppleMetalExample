@@ -252,15 +252,53 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         
         float intersectionDistance = intersectionsShadow[rayIdx];
         
+        float3 multipleImportance = float3(0.0);
+        
+        if (ray.bounce > 0 && ray.maxDistance >= 0.0f && intersection.distance >= 0.0f)
+        {
+            uint mask = triangleMasks[intersection.primitiveIndex];
+            
+            if (mask != TRIANGLE_MASK_GEOMETRY)
+            {
+                multipleImportance = uniforms.light.color / M_PI_F;
+
+                // Terminate the ray's path
+                ray.maxDistance = -1.0f;
+                
+                float3 shadowRayColor = float3(0.0);
+                if (shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f)
+                {
+                    shadowRayColor = shadowRay.color;
+                }
+                
+                float3 intersectionPoint = ray.origin + ray.direction * intersection.distance;
+                float pdfLight = areaLightPdf(ray.origin, intersectionPoint, uniforms.light.forward,
+                                              length(uniforms.light.right) * length(uniforms.light.up) * 4.0);
+                float pdfScatter = dot(shadowRay.direction, ray.normal) / M_PI_F;
+                
+                multipleImportance = shadowRayColor / (pdfLight * shadowRay.pdf) + multipleImportance / (pdfScatter + ray.pdf);
+                multipleImportance *= ray.color;
+                
+                dstTex.write(float4(multipleImportance, 1.0f), tid);
+                
+                shadowRay.maxDistance = -1.0f;
+            }
+        }
+        
         if (ray.bounce > 0 &&
             shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f)
         {
-            float3 color = shadowRay.color / shadowRay.pdf;
-            
-            color += dstTex.read(tid).xyz;
-            
-            // Write result to render target
-            dstTex.write(float4(color, 1.0f), tid);
+            if (multipleImportance.x == 0 &&
+                multipleImportance.y == 0 &&
+                multipleImportance.z == 0)
+            {
+                float3 color = shadowRay.color / shadowRay.pdf;
+                
+                color += dstTex.read(tid).xyz;
+                
+                // Write result to render target
+                dstTex.write(float4(color, 1.0f), tid);
+            }
         }
         
         // Intersection distance will be negative if ray missed or was disabled in a previous
