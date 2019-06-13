@@ -33,7 +33,8 @@ struct Ray {
     // The accumulated color along the ray's path so far
     packed_float3 color;
     
-    float invPdf;
+    packed_float3 normal;
+    float pdf;
     
     int bounce;
 };
@@ -58,7 +59,7 @@ struct Intersection {
 struct Sample
 {
     float3 liColor;
-    float invPdf;
+    float pdf;
 };
 
 
@@ -154,6 +155,19 @@ inline float3 sampleCosineWeightedHemisphere(float2 u) {
     return float3(sin_theta * cos_phi, cos_theta, sin_theta * sin_phi);
 }
 
+
+float areaLightPdf(float3 position, float3 lightSamplePos, float3 normal, float area)
+{
+    float3 lightDirection = lightSamplePos - position;
+    float lightDistance = length(lightDirection);
+    float pdf = lightDistance * lightDistance;
+    pdf /= max(saturate(dot(-lightDirection, normal)), 1e-3);
+    pdf /= area;
+    
+    return pdf;
+}
+
+
 // Maps two uniformly random numbers to the surface of a two-dimensional area light
 // source and returns the direction to this point, the amount of light which travels
 // between the intersection point and the sample point on the light source, as well
@@ -188,12 +202,7 @@ inline Sample sampleAreaLight(constant AreaLight & light,
     result.liColor = light.color;
     
     // Light falls off with the inverse square of the distance to the intersection point
-    result.invPdf = (inverseLightDistance * inverseLightDistance);
-    
-    // Light also falls off with the cosine of angle between the intersection point and
-    // the light source
-    result.invPdf *= saturate(dot(-lightDirection, light.forward));
-    result.invPdf *= (length(light.right) * 2.0 * length(light.up) * 2.0);
+    result.pdf = areaLightPdf(position, samplePosition, light.forward, length(light.right) * 2.0 * length(light.up) * 2.0);
     
     return result;
 }
@@ -246,7 +255,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         if (ray.bounce > 0 &&
             shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f)
         {
-            float3 color = shadowRay.color * shadowRay.invPdf;
+            float3 color = shadowRay.color / shadowRay.pdf;
             
             color += dstTex.read(tid).xyz;
             
@@ -310,11 +319,13 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // Don't overshoot the light source
                 shadowRay.maxDistance = lightDistance - 1e-3f;
                 
+                shadowRay.normal = surfaceNormal;
+                
                 // Multiply the color and lighting amount at the intersection point to get the final
                 // color, and pass it along with the shadow ray so that it can be added to the
                 // output image if needed.
                 shadowRay.color = sampleLi.liColor * color;
-                shadowRay.invPdf = sampleLi.invPdf;
+                shadowRay.pdf = sampleLi.pdf;
 #endif
                 
                 // Next we choose a random direction to continue the path of the ray. This will
@@ -332,7 +343,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 ray.direction = sampleDirection;
                 ray.color = color;
                 ray.bounce = ray.bounce + 1;
-                ray.invPdf = M_PI_F / max(metal::dot(sampleDirection, surfaceNormal), 1e-3);
+                ray.pdf = max(metal::dot(sampleDirection, surfaceNormal), 1e-3) / M_PI_F;
+                ray.normal = surfaceNormal;
                 
 #if D_EMIT_SHADOW_RAY
                 ray.mask = RAY_MASK_SECONDARY;

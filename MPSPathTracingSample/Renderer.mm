@@ -19,7 +19,7 @@ static const NSUInteger maxFramesInFlight = 3;
 static const size_t alignedUniformsSize = (sizeof(Uniforms) + 255) & ~255;
 
 static const size_t rayBounce = 4;
-static const size_t rayStride = 52;
+static const size_t rayStride = 64;
 static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitiveIndexCoordinates);
 
 @implementation Renderer
