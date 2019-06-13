@@ -33,6 +33,8 @@ struct Ray {
     // The accumulated color along the ray's path so far
     packed_float3 color;
     
+    float pdf;
+    
     int bounce;
 };
 
