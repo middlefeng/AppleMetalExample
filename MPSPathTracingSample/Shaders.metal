@@ -182,6 +182,7 @@ inline void sampleAreaLight(constant AreaLight & light,
     // Light also falls off with the cosine of angle between the intersection point and
     // the light source
     lightColor *= saturate(dot(-lightDirection, light.forward));
+    lightColor *= (length(light.right) * 2.0 * length(light.up) * 2.0);
 }
 
 // Aligns a direction on the unit hemisphere such that the hemisphere's "up" direction
@@ -257,7 +258,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 
                 // Scale the light color by the cosine of the angle between the light direction and
                 // surface normal
-                lightColor *= saturate(dot(surfaceNormal, lightDirection));
+                lightColor *= saturate(dot(surfaceNormal, lightDirection)) / M_PI_F;
 #endif
 
                 // Interpolate the vertex color at the intersection point

@@ -18,7 +18,11 @@ using namespace simd;
 static const NSUInteger maxFramesInFlight = 3;
 static const size_t alignedUniformsSize = (sizeof(Uniforms) + 255) & ~255;
 
+#if D_EMIT_SHADOW_RAY
 static const size_t rayBounce = 3;
+#else
+static const size_t rayBounce = 4;
+#endif
 static const size_t rayStride = 48;
 static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitiveIndexCoordinates);
 
