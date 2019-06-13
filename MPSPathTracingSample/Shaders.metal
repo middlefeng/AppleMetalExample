@@ -33,7 +33,7 @@ struct Ray {
     // The accumulated color along the ray's path so far
     packed_float3 color;
     
-    float pdf;
+    float invPdf;
     
     int bounce;
 };
@@ -53,6 +53,14 @@ struct Intersection {
     // not intersect the scene.
     float2 coordinates;
 };
+
+
+struct Sample
+{
+    float3 liColor;
+    float invPdf;
+};
+
 
 // Generates rays starting from the camera origin and traveling towards the image plane aligned
 // with the camera's coordinate system.
@@ -150,13 +158,14 @@ inline float3 sampleCosineWeightedHemisphere(float2 u) {
 // source and returns the direction to this point, the amount of light which travels
 // between the intersection point and the sample point on the light source, as well
 // as the distance between these two points.
-inline void sampleAreaLight(constant AreaLight & light,
-                            float2 u,
-                            float3 position,
-                            thread float3 & lightDirection,
-                            thread float3 & lightColor,
-                            thread float & lightDistance)
+inline Sample sampleAreaLight(constant AreaLight & light,
+                              float2 u,
+                              float3 position,
+                              thread float3 & lightDirection,
+                              thread float & lightDistance)
 {
+    Sample result;
+    
     // Map to -1..1
     u = u * 2.0f - 1.0f;
     
@@ -176,15 +185,17 @@ inline void sampleAreaLight(constant AreaLight & light,
     lightDirection *= inverseLightDistance;
     
     // Start with the light's color
-    lightColor = light.color;
+    result.liColor = light.color;
     
     // Light falls off with the inverse square of the distance to the intersection point
-    lightColor *= (inverseLightDistance * inverseLightDistance);
+    result.invPdf = (inverseLightDistance * inverseLightDistance);
     
     // Light also falls off with the cosine of angle between the intersection point and
     // the light source
-    lightColor *= saturate(dot(-lightDirection, light.forward));
-    lightColor *= (length(light.right) * 2.0 * length(light.up) * 2.0);
+    result.invPdf *= saturate(dot(-lightDirection, light.forward));
+    result.invPdf *= (length(light.right) * 2.0 * length(light.up) * 2.0);
+    
+    return result;
 }
 
 // Aligns a direction on the unit hemisphere such that the hemisphere's "up" direction
@@ -235,7 +246,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         if (ray.bounce > 0 &&
             shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f)
         {
-            float3 color = shadowRay.color;
+            float3 color = shadowRay.color * shadowRay.invPdf;
             
             color += dstTex.read(tid).xyz;
             
@@ -264,17 +275,16 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
 
 #if D_EMIT_SHADOW_RAY
                 float3 lightDirection;
-                float3 lightColor;
+                Sample sampleLi;
                 float lightDistance;
                 
                 // Compute the direction to, color, and distance to a random point on the light
                 // source
-                sampleAreaLight(uniforms.light, r, intersectionPoint, lightDirection,
-                                lightColor, lightDistance);
+                sampleLi = sampleAreaLight(uniforms.light, r, intersectionPoint, lightDirection, lightDistance);
                 
                 // Scale the light color by the cosine of the angle between the light direction and
                 // surface normal
-                lightColor *= saturate(dot(surfaceNormal, lightDirection)) / M_PI_F;
+                sampleLi.liColor *= saturate(dot(surfaceNormal, lightDirection)) / M_PI_F;
 #endif
 
                 // Interpolate the vertex color at the intersection point
@@ -303,7 +313,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 // Multiply the color and lighting amount at the intersection point to get the final
                 // color, and pass it along with the shadow ray so that it can be added to the
                 // output image if needed.
-                shadowRay.color = lightColor * color;
+                shadowRay.color = sampleLi.liColor * color;
+                shadowRay.invPdf = sampleLi.invPdf;
 #endif
                 
                 // Next we choose a random direction to continue the path of the ray. This will
