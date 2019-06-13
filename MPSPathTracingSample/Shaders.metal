@@ -160,8 +160,10 @@ float areaLightPdf(float3 position, float3 lightSamplePos, float3 normal, float 
 {
     float3 lightDirection = lightSamplePos - position;
     float lightDistance = length(lightDirection);
+    lightDirection /= lightDistance;
+    
     float pdf = lightDistance * lightDistance;
-    pdf /= max(saturate(dot(-lightDirection, normal)), 1e-3);
+    pdf /= max(saturate(dot(-lightDirection, normal)), 1e-9);
     pdf /= area;
     
     return pdf;
