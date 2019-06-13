@@ -254,6 +254,8 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         
         float intersectionDistance = intersectionsShadow[rayIdx];
         
+        
+#if D_EMIT_SHADOW_RAY
         float3 multipleImportance = float3(0.0);
         
         if (ray.bounce > 0 && ray.maxDistance >= 0.0f && intersection.distance >= 0.0f)
@@ -302,6 +304,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 dstTex.write(float4(color, 1.0f), tid);
             }
         }
+#endif
         
         // Intersection distance will be negative if ray missed or was disabled in a previous
         // iteration.
