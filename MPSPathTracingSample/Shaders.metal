@@ -332,6 +332,7 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                 ray.direction = sampleDirection;
                 ray.color = color;
                 ray.bounce = ray.bounce + 1;
+                ray.invPdf = M_PI_F / max(metal::dot(sampleDirection, surfaceNormal), 1e-3);
                 
 #if D_EMIT_SHADOW_RAY
                 ray.mask = RAY_MASK_SECONDARY;
