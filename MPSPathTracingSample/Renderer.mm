@@ -18,11 +18,7 @@ using namespace simd;
 static const NSUInteger maxFramesInFlight = 3;
 static const size_t alignedUniformsSize = (sizeof(Uniforms) + 255) & ~255;
 
-#if D_EMIT_SHADOW_RAY
-static const size_t rayBounce = 3;
-#else
 static const size_t rayBounce = 4;
-#endif
 static const size_t rayStride = 48;
 static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitiveIndexCoordinates);
 
@@ -42,13 +38,13 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     id <MTLBuffer> _rayBuffer;
     id <MTLBuffer> _shadowRayBuffer;
     id <MTLBuffer> _intersectionBuffer;
+    id <MTLBuffer> _intersectionShadowBuffer;
     id <MTLBuffer> _uniformBuffer;
     id <MTLBuffer> _randomBuffer;
     id <MTLBuffer> _triangleMaskBuffer;
     
     id <MTLComputePipelineState> _rayPipeline;
     id <MTLComputePipelineState> _shadePipeline;
-    id <MTLComputePipelineState> _shadowPipeline;
     id <MTLComputePipelineState> _accumulatePipeline;
     id <MTLRenderPipelineState> _copyPipeline;
     
@@ -133,17 +129,6 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     if (!_shadePipeline)
         NSLog(@"Failed to create pipeline state: %@", error);
     
-    // Consumes shadow ray intersection tests to update the output image
-    computeDescriptor.computeFunction = [_library newFunctionWithName:@"shadowKernel"];
-    
-    _shadowPipeline = [_device newComputePipelineStateWithDescriptor:computeDescriptor
-                                                             options:0
-                                                          reflection:nil
-                                                               error:&error];
-    
-    if (!_shadowPipeline)
-        NSLog(@"Failed to create pipeline state: %@", error);
-
     // Averages the current frame's output image with all previous frames
     computeDescriptor.computeFunction = [_library newFunctionWithName:@"accumulateKernel"];
     
@@ -286,6 +271,7 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
     _rayBuffer = [_device newBufferWithLength:rayStride * rayCount options:MTLResourceStorageModePrivate];
     _shadowRayBuffer = [_device newBufferWithLength:rayStride * rayCount options:MTLResourceStorageModePrivate];
     _intersectionBuffer = [_device newBufferWithLength:intersectionStride * rayCount options:MTLResourceStorageModePrivate];
+    _intersectionShadowBuffer = [_device newBufferWithLength:sizeof(float) * rayCount options:MTLResourceStorageModePrivate];
     
     // Create a render target which the shading kernel can write to
     MTLTextureDescriptor *renderTargetDescriptor = [[MTLTextureDescriptor alloc] init];
@@ -430,14 +416,17 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
         // We launch another pipeline to consume the intersection results and shade the scene
         computeEncoder = [commandBuffer computeCommandEncoder];
         
-        [computeEncoder setBuffer:_uniformBuffer      offset:_uniformBufferOffset atIndex:0];
-        [computeEncoder setBuffer:_rayBuffer          offset:0                    atIndex:1];
-        [computeEncoder setBuffer:_shadowRayBuffer    offset:0                    atIndex:2];
-        [computeEncoder setBuffer:_intersectionBuffer offset:0                    atIndex:3];
-        [computeEncoder setBuffer:_vertexColorBuffer  offset:0                    atIndex:4];
-        [computeEncoder setBuffer:_vertexNormalBuffer offset:0                    atIndex:5];
-        [computeEncoder setBuffer:_randomBuffer       offset:_randomBufferOffset  atIndex:6];
-        [computeEncoder setBuffer:_triangleMaskBuffer offset:0                    atIndex:7];
+        size_t parameterIndex = 0;
+        
+        [computeEncoder setBuffer:_uniformBuffer      offset:_uniformBufferOffset atIndex:parameterIndex];
+        [computeEncoder setBuffer:_rayBuffer          offset:0                    atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_shadowRayBuffer    offset:0                    atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_intersectionBuffer offset:0                    atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_intersectionShadowBuffer offset:0              atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_vertexColorBuffer  offset:0                    atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_vertexNormalBuffer offset:0                    atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_randomBuffer       offset:_randomBufferOffset  atIndex:++parameterIndex];
+        [computeEncoder setBuffer:_triangleMaskBuffer offset:0                    atIndex:++parameterIndex];
         
         [computeEncoder setTexture:_renderTarget atIndex:0];
         
@@ -461,29 +450,10 @@ static const size_t intersectionStride = sizeof(MPSIntersectionDistancePrimitive
                                        intersectionType:MPSIntersectionTypeAny
                                               rayBuffer:_shadowRayBuffer
                                         rayBufferOffset:0
-                                     intersectionBuffer:_intersectionBuffer
+                                     intersectionBuffer:_intersectionShadowBuffer
                                intersectionBufferOffset:0
                                                rayCount:width * height
                                   accelerationStructure:_accelerationStructure];
-        
-        // Finally, we launch a kernel which writes the color computed by the shading kernel into the
-        // output image, but only if the corresponding shadow ray does not intersect anything on the way to
-        // the light. If the shadow ray intersects a triangle before reaching the light source, the original
-        // intersection point was in shadow.
-        
-        computeEncoder = [commandBuffer computeCommandEncoder];
-        
-        [computeEncoder setBuffer:_uniformBuffer      offset:_uniformBufferOffset atIndex:0];
-        [computeEncoder setBuffer:_shadowRayBuffer    offset:0                    atIndex:1];
-        [computeEncoder setBuffer:_intersectionBuffer offset:0                    atIndex:2];
-        
-        [computeEncoder setTexture:_renderTarget atIndex:0];
-        
-        [computeEncoder setComputePipelineState:_shadowPipeline];
-        
-        [computeEncoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
-        
-        [computeEncoder endEncoding];
 #endif
     }
 

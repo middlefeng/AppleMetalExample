@@ -213,11 +213,12 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
                         device Ray *rays,
                         device Ray *shadowRays,
                         device Intersection *intersections,
+                        device float *intersectionsShadow,
                         device float3 *vertexColors,
                         device float3 *vertexNormals,
                         device float2 *random,
                         device uint *triangleMasks,
-                        texture2d<float, access::write> dstTex)
+                        texture2d<float, access::read_write> dstTex)
 {
     if (tid.x < uniforms.width && tid.y < uniforms.height) {
         unsigned int rayIdx = tid.y * uniforms.width + tid.x;
@@ -226,6 +227,19 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
         device Intersection & intersection = intersections[rayIdx];
         
         float3 color = ray.color;
+        
+        float intersectionDistance = intersectionsShadow[rayIdx];
+        
+        if (ray.bounce > 0 &&
+            shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f)
+        {
+            float3 color = shadowRay.color;
+            
+            color += dstTex.read(tid).xyz;
+            
+            // Write result to render target
+            dstTex.write(float4(color, 1.0f), tid);
+        }
         
         // Intersection distance will be negative if ray missed or was disabled in a previous
         // iteration.
@@ -329,37 +343,6 @@ kernel void shadeKernel(uint2 tid [[thread_position_in_grid]],
             // The ray missed the scene, so terminate the ray's path
             ray.maxDistance = -1.0f;
             shadowRay.maxDistance = -1.0f;
-        }
-    }
-}
-
-// Checks if a shadow ray hit something on the way to the light source. If not, the point the
-// shadow ray started from was not in shadow so it's color should be added to the output image.
-kernel void shadowKernel(uint2 tid [[thread_position_in_grid]],
-                         constant Uniforms & uniforms,
-                         device Ray *shadowRays,
-                         device float *intersections,
-                         texture2d<float, access::read_write> dstTex)
-{
-    if (tid.x < uniforms.width && tid.y < uniforms.height) {
-        unsigned int rayIdx = tid.y * uniforms.width + tid.x;
-        device Ray & shadowRay = shadowRays[rayIdx];
-        
-        // Use the MPSRayIntersection intersectionDataType property to return the
-        // intersection distance for this kernel only. You don't need the other fields, so
-        // you'll save memory bandwidth.
-        float intersectionDistance = intersections[rayIdx];
-        
-        // If the shadow ray wasn't disabled (max distance >= 0) and it didn't hit anything
-        // on the way to the light source, add the color passed along with the shadow ray
-        // to the output image.
-        if (shadowRay.maxDistance >= 0.0f && intersectionDistance < 0.0f) {
-            float3 color = shadowRay.color;
-            
-            color += dstTex.read(tid).xyz;
-            
-            // Write result to render target
-            dstTex.write(float4(color, 1.0f), tid);
         }
     }
 }
